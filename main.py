@@ -10,9 +10,30 @@ from datetime import datetime
 import logging
 import random
 import time
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# উইন্ডোজ এনকোডিং ফিক্স
-sys.stdout.reconfigure(encoding='utf-8')
+# --- RENDER PORT FIX (HEALTH CHECK SERVER) ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Orange Carrier Bot is Live and Healthy!")
+
+def run_health_check():
+    # Render default port 10000 ba 8080 use kore
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    print(f"Health check server started on port {port}")
+    server.serve_forever()
+
+# Threading diye background-e server chalu rakha jate Render timeout na khay
+threading.Thread(target=run_health_check, daemon=True).start()
+
+# --- WINDOWS ENCODING FIX ---
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # ==========================================
 # ⚙️ SETTINGS
@@ -21,22 +42,20 @@ TOKEN = '8304086854:AAEO7h3DuOfKqyyRJlD38pQdeKzacYq8kTQ'
 ADMIN_ID = 6698952039 
 ADMIN_USERNAME = "mdmohanali5475"
 
-# 👇 গোল্ডেন লিস্ট (তোমার CLI.txt থেকে এনালাইসিস করা)
 TARGET_PREFIXES = [
- "573","442","346","447","5731","491","346","393","972","9725","316","989","171","1714","336","971","9715","4917","407","4474","503","4915","5730","5037","974","9891","905","487","5732","337","601","992",
+ "573","442","346","447","5731","491","346","393","972","9725","316","989","171","1714","336","971","9715","4917","407","4474","503","4915","5730","5037","974","9891","905","487","5732","337","601","992","4314","8807","121","861","668","234"
 ]
 # ==========================================
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# গ্লোবাল কনফিগারেশন
 bot_config = {
     'cookies': None, 
     'xsrf_token': None,
     'minutes': 30
 }
 
-# --- ফ্ল্যাগ জেনারেটর ---
+# --- FUNCTIONS ---
 def get_flag(country_name):
     flags = {
         "COLOMBIA": "🇨🇴", "UNITED KINGDOM": "🇬🇧", "GERMANY": "🇩🇪", "ITALY": "🇮🇹",
@@ -45,15 +64,13 @@ def get_flag(country_name):
         "IRAN": "🇮🇷", "MALAYSIA": "🇲🇾", "EL SALVADOR": "🇸🇻", "QATAR": "🇶🇦",
         "TURKEY": "🇹🇷", "BELGIUM": "🇧🇪", "USA": "🇺🇸", "CANADA": "🇨🇦",
         "PORTUGAL": "🇵🇹", "BANGLADESH": "🇧🇩", "INDIA": "🇮🇳", "PAKISTAN": "🇵🇰",
-        "AFGHANISTAN": "🇦🇫", "VIETNAM": "🇻🇳", "INDONESIA": "🇮🇩"
+        "AFGHANISTAN": "🇦🇫", "VIETNAM": "🇰", "INDONESIA": "🇮🇩"
     }
     name_upper = country_name.upper()
     for name, flag in flags.items():
-        if name in name_upper:
-            return flag
+        if name in name_upper: return flag
     return "🏳️"
 
-# --- কুকি প্রসেসিং ---
 def process_cookie(cookie_text):
     if "orange_carrier_session" in cookie_text:
         try:
@@ -61,11 +78,9 @@ def process_cookie(cookie_text):
                 token_part = cookie_text.split("XSRF-TOKEN=")[1].split(";")[0]
                 token = urllib.parse.unquote(token_part)
                 return cookie_text, token
-        except:
-            return None, None
+        except: return None, None
     return None, None
 
-# --- Async Data Fetch ---
 async def fetch_data_async(session, query, cookies, token):
     url = "https://www.orangecarrier.com/services/cli/access/get"
     headers = {
@@ -98,7 +113,6 @@ async def fetch_data_async(session, query, cookies, token):
     except: return []
     return []
 
-# --- মেইন মেনু (৫টি বাটন) ---
 def get_menu(user_id):
     buttons = [
         [KeyboardButton("🏆 Top 20 Range"), KeyboardButton("🔥 Top 50 Range")],
@@ -109,14 +123,13 @@ def get_menu(user_id):
         buttons.append([KeyboardButton("⚙️ Set Cookie (Admin)")])
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
-# --- হ্যান্ডলারস ---
+# --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     msg = (
         "👋 **Pro Active Range Bot V13**\n\n"
-        "✅ **Smart Copy:** নাম এবং কোড আলাদা আলাদা কপি হবে।\n"
-        "✅ **Flag Fixed:** পতাকা এখন আর কপি হবে না।\n"
-        "✅ **5 Options:** সব ফিচার রেডি।"
+        "✅ **Render Mode:** Bot is now permanent!\n"
+        "✅ **Separate Copy:** Click names/codes to copy."
     )
     await update.message.reply_text(msg, reply_markup=get_menu(user_id), parse_mode='Markdown')
 
@@ -124,62 +137,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.message.from_user.id
 
-    # 1. Admin Cookie Setup
-    if text == "⚙️ Set Cookie (Admin)":
-        if user_id == ADMIN_ID:
-            await update.message.reply_text("🔒 **Admin Mode:** Paste Cookie here:")
-            context.user_data['awaiting_cookie'] = True
+    if text == "⚙️ Set Cookie (Admin)" and user_id == ADMIN_ID:
+        await update.message.reply_text("🔒 **Admin Mode:** Paste Cookie here:")
+        context.user_data['awaiting_cookie'] = True
         return
 
-    if context.user_data.get('awaiting_cookie'):
-        if user_id == ADMIN_ID:
-            cookie, token = process_cookie(text)
-            if cookie and token:
-                bot_config['cookies'], bot_config['xsrf_token'] = cookie, token
-                context.user_data['awaiting_cookie'] = False
-                await update.message.reply_text("✅ Cookie Updated!", reply_markup=get_menu(user_id))
-            else:
-                await update.message.reply_text("❌ Invalid Cookie.")
+    if context.user_data.get('awaiting_cookie') and user_id == ADMIN_ID:
+        cookie, token = process_cookie(text)
+        if cookie and token:
+            bot_config['cookies'], bot_config['xsrf_token'] = cookie, token
+            context.user_data['awaiting_cookie'] = False
+            await update.message.reply_text("✅ Cookie Updated!", reply_markup=get_menu(user_id))
+        else:
+            await update.message.reply_text("❌ Invalid Cookie.")
         return
 
-    # 2. Support Button
     if text == "📞 Support":
         keyboard = [[InlineKeyboardButton("👨‍💻 Contact Admin", url=f"https://t.me/{ADMIN_USERNAME}")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("যেকোনো প্রয়োজনে এডমিনের সাথে যোগাযোগ করুন:", reply_markup=reply_markup)
+        await update.message.reply_text("যেকোনো প্রয়োজনে এডমিনের সাথে যোগাযোগ করুন:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # 3. Set Time Feature
     if text == "⏱️ Set Time (Min)":
-        await update.message.reply_text("⏰ **কত মিনিটের ডাটা দেখতে চান?**\n(সংখ্যা লিখুন, যেমন: `10`, `30`)", parse_mode='Markdown')
+        await update.message.reply_text("⏰ **কত মিনিটের ডাটা দেখতে চান?**", parse_mode='Markdown')
         context.user_data['awaiting_time'] = True
         return
 
     if context.user_data.get('awaiting_time'):
         if text.isdigit():
-            mins = int(text)
-            bot_config['minutes'] = mins
+            bot_config['minutes'] = int(text)
             context.user_data['awaiting_time'] = False
-            await update.message.reply_text(f"✅ **Time Set:** {mins} Minutes.", reply_markup=get_menu(user_id))
+            await update.message.reply_text(f"✅ **Time Set:** {text} Minutes.", reply_markup=get_menu(user_id))
         else:
-            await update.message.reply_text("❌ দয়া করে শুধু সংখ্যা লিখুন।")
+            await update.message.reply_text("❌ দয়া করে শুধু সংখ্যা লিখুন।")
         return
 
-    # 4. Country Prefix Search
     if text == "🌍 Country Prefix":
-        await update.message.reply_text("🔍 **সার্চ করুন:**\nদেশের নাম বা কোড লিখুন (যেমন: `Colombia` বা `573`)।", parse_mode='Markdown')
+        await update.message.reply_text("🔍 **সার্চ করুন:** দেশের নাম বা কোড লিখুন।")
         return
 
-    # 5. Top 20 / Top 50 Logic (Separate Copy Fix)
     if text in ["🏆 Top 20 Range", "🔥 Top 50 Range"]:
         if not bot_config['cookies']:
             await update.message.reply_text("⚠️ কুকি সেট করা নেই।")
             return
-
         limit = 20 if "20" in text else 50
         mins = bot_config['minutes']
-        
-        status_msg = await update.message.reply_text(f"🚀 **Scanning Top {limit} ({mins} Min)...**")
+        status_msg = await update.message.reply_text(f"🚀 **Scanning Top {limit}...**")
         start_time = time.time()
         
         async with aiohttp.ClientSession() as session:
@@ -201,54 +203,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     is_gold = item['matched_query'] in TARGET_PREFIXES[:15]
                     base_hit = random.randint(30, 80) if is_gold else random.randint(5, 25)
-                    time_factor = mins / 30.0
-                    final_hit = int(base_hit * time_factor)
-                    if final_hit < 1: final_hit = 1
-                    item['count'] = final_hit
+                    item['count'] = int(base_hit * (mins / 30.0)) or 1
                     seen[key] = item
             
             final_list = sorted(seen.values(), key=lambda x: x['count'], reverse=True)[:limit]
-            elapsed = round(time.time() - start_time, 2)
-            
-            # --- SEPARATE COPY FORMAT (UPDATED) ---
             resp = f"📊 **Active Ranges ({mins} Min)**\n━━━━━━━━━━━━━━━━━━\n"
             for item in final_list:
-                # এখানে ফ্ল্যাগ প্লেইন টেক্সট, কিন্তু নাম এবং কোড আলাদা ব্যাকটিকে (`)
-                # এর ফলে ক্লিক করলে আলাদা আলাদা কপি হবে।
                 resp += f"🔹 {item['flag']} `{item['name']}` `{item['prefix']}` ➔ {item['count']} Hits\n"
-            
-            resp += f"━━━━━━━━━━━━━━━━━━\n⚡ Speed: {elapsed}s"
+            resp += f"━━━━━━━━━━━━━━━━━━\n⚡ Speed: {round(time.time() - start_time, 2)}s"
             await status_msg.edit_text(resp, parse_mode='Markdown')
         else:
-            await status_msg.edit_text("❌ কোনো অ্যাক্টিভ রেঞ্জ পাওয়া যায়নি।")
+            await status_msg.edit_text("❌ কোনো অ্যাক্টিভ রেঞ্জ পাওয়া যায়নি।")
         return
 
-    # 6. Manual Search
     if text.isdigit() or text.isalpha():
-        msg = await update.message.reply_text("🔎 Searching...")
         search_query = text if text.isdigit() else "573"
-        
         async with aiohttp.ClientSession() as session:
             data = await fetch_data_async(session, search_query, bot_config['cookies'], bot_config['xsrf_token'])
-        
         if isinstance(data, list) and data:
             resp = f"📡 **Result for {text}**\n\n"
-            seen = set()
             for item in data[:15]:
-                if item['prefix'] not in seen:
-                    # Separate Copy for Search also
-                    resp += f"🔹 {item['flag']} `{item['name']}` `{item['prefix']}` ➔ Active\n"
-                    seen.add(item['prefix'])
-            await msg.edit_text(resp, parse_mode='Markdown')
+                resp += f"🔹 {item['flag']} `{item['name']}` `{item['prefix']}` ➔ Active\n"
+            await update.message.reply_text(resp, parse_mode='Markdown')
         else:
-            await msg.edit_text("❌ No data found.")
+            await update.message.reply_text("❌ No data found.")
 
-# --- মেইন ---
+# --- MAIN ---
 def main():
-    print("🤖 Bot V13.0 Started (Fix: Separate Copy)...")
+    print("🤖 Bot Started with Health Check...")
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(lambda u,c: None))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling()
 
